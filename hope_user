@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+
+import requests
+import getpass
+import sys
+import MySQLdb
+import time
+import bcrypt
+
+from passlib.hash import argon2
+from crypto_functions import *
+
+
+key = getpass.getpass('Admin Password: ')
+
+argon_hash = '$argon2i$v=19$m=102400,t=2,p=8$5xwDoNTa+z/H2Ftrzbl3bg$GfIzibh59jW09AEKS/S02w'
+
+if not argon2.verify(key, argon_hash):
+    print ('bad password')
+    sys.exit()
+
+
+password = getpass.getpass("User Password: ")
+password = str(bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(prefix=b"2a", rounds=8)))
+password = password[2:-1]
+
+username = input("Username: ")
+
+
+cipher = AESCipher(key)
+
+secret_server = '10.0.0.7'
+secret_token = cipher.decrypt('4PQ7q4znGNv6thgiu2SPsTLNfQWP7o0whh0Yj03zwb0Hp+xKqmqFbjTTM/Gny8S0')
+secret_url = "http://%s/api/get_secret.php" % secret_server
+
+osticket_server = '10.0.0.70'
+osticket_user = requests.post(secret_url, data={'id': 8, 'token': secret_token})
+osticket_password = requests.post(secret_url, data={'id': 9, 'token': secret_token})
+
+
+mydb = MySQLdb.connect(
+  host=osticket_server,
+  user=osticket_user.text,
+  passwd=osticket_password.text,
+  db="osticket_db"
+)
+
+cursor = mydb.cursor()
+
+
+
+now = time.strftime('%Y-%m-%d %H:%M:%S')
+
+
+try:
+    cursor.execute("INSERT INTO `ost_user` (`org_id`, `default_email_id`, `status`, `name`, `created`, `updated`) VALUES ('0', '1', '0', %s, %s, %s);", (username, now, now))
+    rows = cursor.fetchall()
+except MySQLdb.Error as  e:
+    for x in range(len(e)): 
+        print(e[x]),
+
+
+cursor.execute("SELECT LAST_INSERT_ID();")
+rows = cursor.fetchall()
+row = str(rows[0])
+
+user_id = row[1:-2]
+
+
+cursor.execute("INSERT INTO `ost_user_account` (`user_id`, `status`, `username`, `passwd`, `registered`) VALUES (%s, '1', %s, %s, %s);", (user_id, username, password, now))
+
+
+mydb.commit()
+
+mydb.close()
+
+
+

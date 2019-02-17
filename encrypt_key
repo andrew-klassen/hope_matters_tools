@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+
+import sys
+import getpass
+from crypto_functions import *
+
+key = getpass.getpass()
+
+plain_text = sys.argv[1]
+cipher = AESCipher(key)
+encrypted = cipher.encrypt(plain_text)
+
+print (encrypted)
+
