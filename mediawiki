@@ -1,0 +1,56 @@
+#!/usr/bin/python3
+
+"""
+    create_account.py
+
+    MediaWiki Action API Code Samples
+    Demo of `createaccount` module: Create an account on a wiki without the 
+    special authentication extensions
+
+    MIT license
+"""
+
+import requests
+import json
+import pprint
+import sys
+
+S = requests.Session()
+
+WIKI_URL = "http://10.0.0.200"
+API_ENDPOINT = WIKI_URL + "/mediawiki/mediawiki-1.32.0/api.php"
+
+# First step
+# Retrieve account creation token from `tokens` module
+
+PARAMS_0 = {
+    'action':"query",
+    'meta':"tokens",
+    'type':"createaccount",
+    'format':"json"
+}
+
+R = S.get(url=API_ENDPOINT, params=PARAMS_0)
+
+DATA = R.json()
+TOKEN = DATA['query']['tokens']['createaccounttoken']
+
+
+# Second step
+# Send a post request with the fetched token and other data (user information,
+# return URL, etc.)  to the API to create an account
+
+PARAMS_1 = {
+    'action': "createaccount",
+    'createtoken': TOKEN,
+    'username': 'joe',
+    'password': 'test123',
+    'retype': 'test123',
+    'createreturnurl': WIKI_URL,
+    'format': "json"
+}
+
+R = S.post(API_ENDPOINT, data=PARAMS_1)
+DATA = R.json()
+
+print(DATA)

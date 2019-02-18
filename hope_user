@@ -6,6 +6,8 @@ import sys
 import MySQLdb
 import time
 import bcrypt
+import json
+import pprint
 
 from passlib.hash import argon2
 from crypto_functions import *
@@ -20,12 +22,20 @@ if not argon2.verify(key, argon_hash):
     sys.exit()
 
 
+first_name = input("First name: ")
+last_name = input("Last name: ")
+username = first_name[0] + last_name
+full_name = first_name + ' ' +  last_name
+
+email = input("Email: ")
+location = input("Location: ")
+job_title = input("Job title: ")
+
+
 password = getpass.getpass("User Password: ")
-password = str(bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(prefix=b"2a", rounds=8)))
-password = password[2:-1]
-
-username = input("Username: ")
-
+password_bcrypt = str(bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(prefix=b"2a", rounds=8)))
+password_bcrypt = password_bcrypt[2:-1]
+password_argon = argon2.hash(password)
 
 cipher = AESCipher(key)
 
@@ -36,6 +46,88 @@ secret_url = "http://%s/api/get_secret.php" % secret_server
 osticket_server = '10.0.0.70'
 osticket_user = requests.post(secret_url, data={'id': 8, 'token': secret_token})
 osticket_password = requests.post(secret_url, data={'id': 9, 'token': secret_token})
+
+rocket_chat_server = '10.0.0.63'
+rocket_chat_id = requests.post(secret_url, data={'id': 10, 'token': secret_token})
+rocket_chat_key = requests.post(secret_url, data={'id': 11, 'token': secret_token})
+
+radius_server = '10.0.0.50'
+radius_user = requests.post(secret_url, data={'id': 12, 'token': secret_token})
+radius_password = requests.post(secret_url, data={'id': 13, 'token': secret_token})
+
+hope_matters_server = '10.0.0.7'
+hope_matters_user = requests.post(secret_url, data={'id': 14, 'token': secret_token})
+hope_matters_password = requests.post(secret_url, data={'id': 15, 'token': secret_token})
+
+
+
+
+
+
+mydb = MySQLdb.connect(
+  host=hope_matters_server,
+  user=hope_matters_user.text,
+  passwd=hope_matters_password.text,
+  db="hope_matters"
+)
+
+cursor = mydb.cursor()
+
+
+cursor.execute("INSERT INTO `accounts` (`username`, `first_name`, `last_name`, `job_title`, `work_location`, `email`, `master_log_access`, `server_admin`, `password`, `created_by`) VALUES (%s, %s, %s, %s, %s, %s, 'no', 'no', %s, 'account_creator');", (username, first_name, last_name, job_title, location, email, password_argon))
+
+
+
+mydb.commit()
+
+mydb.close()
+
+
+
+
+
+
+
+
+
+
+
+
+mydb = MySQLdb.connect(
+  host=radius_server,
+  user=radius_user.text,
+  passwd=radius_password.text,
+  db="radius"
+)
+
+cursor = mydb.cursor()
+
+
+cursor.execute("INSERT INTO `radcheck` (`username`, `attribute`, `op`, `value`) VALUES (%s, 'Cleartext-Password', ':=', %s);", (username, password))
+
+
+cursor.execute("INSERT INTO `radusergroup` (`username`, `groupname`, `priority`) VALUES ('%s', 'mygroup', '0');" % username)
+
+
+
+
+mydb.commit()
+
+mydb.close()
+
+
+
+
+rocket_chat_url = "http://%s:80/api/v1/users.create" % rocket_chat_server
+rocket_chat_headers = {"Content-type": "application/json", "X-User-Id": rocket_chat_id.text, "X-Auth-Token": rocket_chat_key.text }
+rocket_chat_data = {"name": full_name, "email": email, "password": password, "username": username}
+rocket_chat_data = json.dumps(rocket_chat_data)
+
+
+response = requests.post(rocket_chat_url, data=rocket_chat_data, headers=rocket_chat_headers )
+
+
+
 
 
 mydb = MySQLdb.connect(
@@ -52,27 +144,31 @@ cursor = mydb.cursor()
 now = time.strftime('%Y-%m-%d %H:%M:%S')
 
 
-try:
-    cursor.execute("INSERT INTO `ost_user` (`org_id`, `default_email_id`, `status`, `name`, `created`, `updated`) VALUES ('0', '1', '0', %s, %s, %s);", (username, now, now))
-    rows = cursor.fetchall()
-except MySQLdb.Error as  e:
-    for x in range(len(e)): 
-        print(e[x]),
-
-
-cursor.execute("SELECT LAST_INSERT_ID();")
+cursor.execute("SELECT `AUTO_INCREMENT` FROM  INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'osticket_db' AND   TABLE_NAME = 'ost_user';")
 rows = cursor.fetchall()
 row = str(rows[0])
 
 user_id = row[1:-2]
 
 
-cursor.execute("INSERT INTO `ost_user_account` (`user_id`, `status`, `username`, `passwd`, `registered`) VALUES (%s, '1', %s, %s, %s);", (user_id, username, password, now))
+cursor.execute("INSERT INTO `ost_user_email` (`id`, `user_id`, `flags`, `address`) VALUES (%s, %s, '0', %s);", (user_id, user_id, email))
+
+
+
+try:
+    cursor.execute("INSERT INTO `ost_user` (`org_id`, `default_email_id`, `status`, `name`, `created`, `updated`) VALUES ('0', %s, '0', %s, %s, %s);", (user_id, username, now, now))
+    rows = cursor.fetchall()
+except MySQLdb.Error as  e:
+    for x in range(len(e)): 
+        print(e[x]),
+
+
+
+cursor.execute("INSERT INTO `ost_user_account` (`user_id`, `status`, `username`, `passwd`, `registered`) VALUES (%s, '1', %s, %s, %s);", (user_id, username, password_bcrypt, now))
+
 
 
 mydb.commit()
 
 mydb.close()
-
-
 
