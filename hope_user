@@ -7,20 +7,23 @@ import MySQLdb
 import time
 import bcrypt
 import json
-import pprint
 
 from passlib.hash import argon2
 from crypto_functions import *
 
 
+#
+# user's input
+#
+
 key = getpass.getpass('Admin Password: ')
 
+# if admin password is not correct, end the script
 argon_hash = '$argon2i$v=19$m=102400,t=2,p=8$5xwDoNTa+z/H2Ftrzbl3bg$GfIzibh59jW09AEKS/S02w'
 
 if not argon2.verify(key, argon_hash):
     print ('bad password')
     sys.exit()
-
 
 first_name = input("First name: ")
 last_name = input("Last name: ")
@@ -31,6 +34,8 @@ email = input("Email: ")
 location = input("Location: ")
 job_title = input("Job title: ")
 
+# timestamp
+now = time.strftime('%Y-%m-%d %H:%M:%S')
 
 password = getpass.getpass("User Password: ")
 password_bcrypt = str(bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(prefix=b"2a", rounds=8)))
@@ -39,6 +44,12 @@ password_argon = argon2.hash(password)
 
 cipher = AESCipher(key)
 
+
+#
+# varibles, these need to be ajusted to your enviorment 
+#
+
+# key/token is stored encrypted, but decrypted by admin password at runtime
 secret_server = '10.0.0.7'
 secret_token = cipher.decrypt('4PQ7q4znGNv6thgiu2SPsTLNfQWP7o0whh0Yj03zwb0Hp+xKqmqFbjTTM/Gny8S0')
 secret_url = "http://%s/api/get_secret.php" % secret_server
@@ -60,9 +71,9 @@ hope_matters_user = requests.post(secret_url, data={'id': 14, 'token': secret_to
 hope_matters_password = requests.post(secret_url, data={'id': 15, 'token': secret_token})
 
 
-
-
-
+#
+# hope_matters
+#
 
 mydb = MySQLdb.connect(
   host=hope_matters_server,
@@ -74,24 +85,30 @@ mydb = MySQLdb.connect(
 cursor = mydb.cursor()
 
 
-cursor.execute("INSERT INTO `accounts` (`username`, `first_name`, `last_name`, `job_title`, `work_location`, `email`, `master_log_access`, `server_admin`, `password`, `created_by`) VALUES (%s, %s, %s, %s, %s, %s, 'no', 'no', %s, 'account_creator');", (username, first_name, last_name, job_title, location, email, password_argon))
+# see if user already exists, script should exit if it does
+cursor.execute("SELECT COUNT(*) FROM `accounts` WHERE `username` = '%s';" % username)
+rows = cursor.fetchall()
+row = str(rows[0])
+user_count = int(row[1:-2])
 
+
+if user_count == 0:
+
+    cursor.execute("INSERT INTO `accounts` (`username`, `first_name`, `last_name`, `job_title`, `work_location`, `email`, `master_log_access`, `server_admin`, `password`, `created_by`) VALUES (%s, %s, %s, %s, %s, %s, 'no', 'no', %s, 'account_creator');", (username, first_name, last_name, job_title, location, email, password_argon))
+
+else:
+    print('')
+    print("user \"%s\" already exists" % username)
+    sys.exit()
 
 
 mydb.commit()
-
 mydb.close()
 
 
-
-
-
-
-
-
-
-
-
+#
+# wifi/radius
+#
 
 mydb = MySQLdb.connect(
   host=radius_server,
@@ -105,18 +122,18 @@ cursor = mydb.cursor()
 
 cursor.execute("INSERT INTO `radcheck` (`username`, `attribute`, `op`, `value`) VALUES (%s, 'Cleartext-Password', ':=', %s);", (username, password))
 
-
 cursor.execute("INSERT INTO `radusergroup` (`username`, `groupname`, `priority`) VALUES ('%s', 'mygroup', '0');" % username)
 
-
+cursor.execute("INSERT INTO `userinfo` (`username`, `changeuserinfo`, `enableportallogin`, `creationdate`, `creationby`, `updatedate`) VALUES (%s, '0', '0', %s, 'administrator', %s);", (username, now, now))
 
 
 mydb.commit()
-
 mydb.close()
 
 
-
+#
+# rocketchat
+#
 
 rocket_chat_url = "http://%s:80/api/v1/users.create" % rocket_chat_server
 rocket_chat_headers = {"Content-type": "application/json", "X-User-Id": rocket_chat_id.text, "X-Auth-Token": rocket_chat_key.text }
@@ -126,9 +143,9 @@ rocket_chat_data = json.dumps(rocket_chat_data)
 
 response = requests.post(rocket_chat_url, data=rocket_chat_data, headers=rocket_chat_headers )
 
-
-
-
+#
+# osticket
+#
 
 mydb = MySQLdb.connect(
   host=osticket_server,
@@ -140,35 +157,20 @@ mydb = MySQLdb.connect(
 cursor = mydb.cursor()
 
 
+# gets next avalible user_id, this needs to be the same across all 3 tables
+cursor.execute("SELECT `AUTO_INCREMENT` FROM  INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'osticket_db' AND TABLE_NAME = 'ost_user';")
 
-now = time.strftime('%Y-%m-%d %H:%M:%S')
-
-
-cursor.execute("SELECT `AUTO_INCREMENT` FROM  INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'osticket_db' AND   TABLE_NAME = 'ost_user';")
 rows = cursor.fetchall()
 row = str(rows[0])
-
 user_id = row[1:-2]
 
 
 cursor.execute("INSERT INTO `ost_user_email` (`id`, `user_id`, `flags`, `address`) VALUES (%s, %s, '0', %s);", (user_id, user_id, email))
 
-
-
-try:
-    cursor.execute("INSERT INTO `ost_user` (`org_id`, `default_email_id`, `status`, `name`, `created`, `updated`) VALUES ('0', %s, '0', %s, %s, %s);", (user_id, username, now, now))
-    rows = cursor.fetchall()
-except MySQLdb.Error as  e:
-    for x in range(len(e)): 
-        print(e[x]),
-
-
+cursor.execute("INSERT INTO `ost_user` (`org_id`, `default_email_id`, `status`, `name`, `created`, `updated`) VALUES ('0', %s, '0', %s, %s, %s);", (user_id, username, now, now))
 
 cursor.execute("INSERT INTO `ost_user_account` (`user_id`, `status`, `username`, `passwd`, `registered`) VALUES (%s, '1', %s, %s, %s);", (user_id, username, password_bcrypt, now))
 
 
-
 mydb.commit()
-
 mydb.close()
-
