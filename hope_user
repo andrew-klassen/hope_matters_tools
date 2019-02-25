@@ -7,6 +7,7 @@ import MySQLdb
 import time
 import bcrypt
 import json
+import csv
 
 from passlib.hash import argon2
 from crypto_functions import *
@@ -19,30 +20,13 @@ from crypto_functions import *
 key = getpass.getpass('Admin Password: ')
 
 # if admin password is not correct, end the script
-argon_hash = '$argon2i$v=19$m=102400,t=2,p=8$5xwDoNTa+z/H2Ftrzbl3bg$GfIzibh59jW09AEKS/S02w'
+argon_hash = '$argon2i$v=19$m=102400,t=2,p=8$ktKak5KSknIOIaT0HsOY8w$b0X0vopPo/xbdx1n6lAkXA'
 
 if not argon2.verify(key, argon_hash):
     print ('bad password')
     sys.exit()
 
-first_name = input("First name: ")
-last_name = input("Last name: ")
-username = first_name[0] + last_name
-full_name = first_name + ' ' +  last_name
-
-email = input("Email: ")
-location = input("Location: ")
-job_title = input("Job title: ")
-
-# timestamp
-now = time.strftime('%Y-%m-%d %H:%M:%S')
-
-password = getpass.getpass("User Password: ")
-password_bcrypt = str(bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(prefix=b"2a", rounds=8)))
-password_bcrypt = password_bcrypt[2:-1]
-password_argon = argon2.hash(password)
-
-cipher = AESCipher(key)
+action = sys.argv[1]
 
 
 #
@@ -50,127 +34,178 @@ cipher = AESCipher(key)
 #
 
 # key/token is stored encrypted, but decrypted by admin password at runtime
-secret_server = '10.0.0.7'
-secret_token = cipher.decrypt('4PQ7q4znGNv6thgiu2SPsTLNfQWP7o0whh0Yj03zwb0Hp+xKqmqFbjTTM/Gny8S0')
+
+cipher = AESCipher(key)
+
+secret_server = '10.2.0.23'
+secret_token = cipher.decrypt('Qoqk2jaA+RMTgP8v15AR49UemF9rCIdoAdMu2Nu9Bt4Fk3FeEMdRht6IS32e6GD3RD6bSDF1i/ah86AmmrJWv0AiQdnVbPnKHwgOg1vYEys=')
 secret_url = "http://%s/api/get_secret.php" % secret_server
 
-osticket_server = '10.0.0.70'
-osticket_user = requests.post(secret_url, data={'id': 8, 'token': secret_token})
-osticket_password = requests.post(secret_url, data={'id': 9, 'token': secret_token})
+osticket_server = '10.2.0.15'
+osticket_user = 'account_creator'
+osticket_password = requests.post(secret_url, data={'id': 4, 'token': secret_token})
 
-rocket_chat_server = '10.0.0.63'
-rocket_chat_id = requests.post(secret_url, data={'id': 10, 'token': secret_token})
-rocket_chat_key = requests.post(secret_url, data={'id': 11, 'token': secret_token})
+rocket_chat_server = '10.2.0.16'
+rocket_chat_id = requests.post(secret_url, data={'id': 6, 'token': secret_token})
+rocket_chat_key = requests.post(secret_url, data={'id': 5, 'token': secret_token})
 
-radius_server = '10.0.0.50'
-radius_user = requests.post(secret_url, data={'id': 12, 'token': secret_token})
-radius_password = requests.post(secret_url, data={'id': 13, 'token': secret_token})
+radius_server = '10.2.0.4'
+radius_user = 'account_creator'
+radius_password = requests.post(secret_url, data={'id': 3, 'token': secret_token})
 
-hope_matters_server = '10.0.0.7'
-hope_matters_user = requests.post(secret_url, data={'id': 14, 'token': secret_token})
-hope_matters_password = requests.post(secret_url, data={'id': 15, 'token': secret_token})
+hope_matters_server = '10.2.0.23'
+hope_matters_user = 'account_creator'
+hope_matters_password = requests.post(secret_url, data={'id': 2, 'token': secret_token})
 
-
-#
-# hope_matters
-#
-
-mydb = MySQLdb.connect(
-  host=hope_matters_server,
-  user=hope_matters_user.text,
-  passwd=hope_matters_password.text,
-  db="hope_matters"
-)
-
-cursor = mydb.cursor()
+# timestamp
+now = time.strftime('%Y-%m-%d %H:%M:%S')
 
 
-# see if user already exists, script should exit if it does
-cursor.execute("SELECT COUNT(*) FROM `accounts` WHERE `username` = '%s';" % username)
-rows = cursor.fetchall()
-row = str(rows[0])
-user_count = int(row[1:-2])
+def create_user(first_name, last_name, username, full_name, email, location, job_title, password, password_bcrypt, password_argon):
+
+	#
+	# hope_matters
+	#
+
+	mydb = MySQLdb.connect(
+	  host=hope_matters_server,
+	  user=hope_matters_user,
+	  passwd=hope_matters_password.text,
+	  db="hope_matters"
+	)
+
+	cursor = mydb.cursor()
 
 
-if user_count == 0:
-
-    cursor.execute("INSERT INTO `accounts` (`username`, `first_name`, `last_name`, `job_title`, `work_location`, `email`, `master_log_access`, `server_admin`, `password`, `created_by`) VALUES (%s, %s, %s, %s, %s, %s, 'no', 'no', %s, 'account_creator');", (username, first_name, last_name, job_title, location, email, password_argon))
-
-else:
-    print('')
-    print("user \"%s\" already exists" % username)
-    sys.exit()
+	# see if user already exists, script should exit if it does
+	cursor.execute("SELECT COUNT(*) FROM `accounts` WHERE `username` = '%s';" % username)
+	rows = cursor.fetchall()
+	row = str(rows[0])
+	user_count = int(row[1:-2])
 
 
-mydb.commit()
-mydb.close()
+	if user_count == 0:
+
+	    cursor.execute("INSERT INTO `accounts` (`username`, `first_name`, `last_name`, `job_title`, `work_location`, `email`, `master_log_access`, `server_admin`, `password`, `created_by`) VALUES (%s, %s, %s, %s, %s, %s, 'no', 'no', %s, 'account_creator');", (username, first_name, last_name, job_title, location, email, password_argon))
+
+	else:
+	    print('')
+	    print("user \"%s\" already exists" % username)
+	    sys.exit()
 
 
-#
-# wifi/radius
-#
-
-mydb = MySQLdb.connect(
-  host=radius_server,
-  user=radius_user.text,
-  passwd=radius_password.text,
-  db="radius"
-)
-
-cursor = mydb.cursor()
+	mydb.commit()
+	mydb.close()
 
 
-cursor.execute("INSERT INTO `radcheck` (`username`, `attribute`, `op`, `value`) VALUES (%s, 'Cleartext-Password', ':=', %s);", (username, password))
+	#
+	# wifi/radius
+	#
 
-cursor.execute("INSERT INTO `radusergroup` (`username`, `groupname`, `priority`) VALUES ('%s', 'mygroup', '0');" % username)
+	mydb = MySQLdb.connect(
+	  host=radius_server,
+	  user=radius_user,
+	  passwd=radius_password.text,
+	  db="radius"
+	)
 
-cursor.execute("INSERT INTO `userinfo` (`username`, `changeuserinfo`, `enableportallogin`, `creationdate`, `creationby`, `updatedate`) VALUES (%s, '0', '0', %s, 'administrator', %s);", (username, now, now))
-
-
-mydb.commit()
-mydb.close()
-
-
-#
-# rocketchat
-#
-
-rocket_chat_url = "http://%s:80/api/v1/users.create" % rocket_chat_server
-rocket_chat_headers = {"Content-type": "application/json", "X-User-Id": rocket_chat_id.text, "X-Auth-Token": rocket_chat_key.text }
-rocket_chat_data = {"name": full_name, "email": email, "password": password, "username": username}
-rocket_chat_data = json.dumps(rocket_chat_data)
+	cursor = mydb.cursor()
 
 
-response = requests.post(rocket_chat_url, data=rocket_chat_data, headers=rocket_chat_headers )
+	cursor.execute("INSERT INTO `radcheck` (`username`, `attribute`, `op`, `value`) VALUES (%s, 'Cleartext-Password', ':=', %s);", (username, password))
 
-#
-# osticket
-#
+	cursor.execute("INSERT INTO `radusergroup` (`username`, `groupname`, `priority`) VALUES ('%s', 'mygroup', '0');" % username)
 
-mydb = MySQLdb.connect(
-  host=osticket_server,
-  user=osticket_user.text,
-  passwd=osticket_password.text,
-  db="osticket_db"
-)
-
-cursor = mydb.cursor()
+	cursor.execute("INSERT INTO `userinfo` (`username`, `changeuserinfo`, `enableportallogin`, `creationdate`, `creationby`, `updatedate`) VALUES (%s, '0', '0', %s, 'administrator', %s);", (username, now, now))
 
 
-# gets next avalible user_id, this needs to be the same across all 3 tables
-cursor.execute("SELECT `AUTO_INCREMENT` FROM  INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'osticket_db' AND TABLE_NAME = 'ost_user';")
-
-rows = cursor.fetchall()
-row = str(rows[0])
-user_id = row[1:-2]
+	mydb.commit()
+	mydb.close()
 
 
-cursor.execute("INSERT INTO `ost_user_email` (`id`, `user_id`, `flags`, `address`) VALUES (%s, %s, '0', %s);", (user_id, user_id, email))
+	#
+	# rocketchat
+	#
 
-cursor.execute("INSERT INTO `ost_user` (`org_id`, `default_email_id`, `status`, `name`, `created`, `updated`) VALUES ('0', %s, '0', %s, %s, %s);", (user_id, username, now, now))
+	rocket_chat_url = "http://%s:80/api/v1/users.create" % rocket_chat_server
+	rocket_chat_headers = {"Content-type": "application/json", "X-User-Id": rocket_chat_id.text, "X-Auth-Token": rocket_chat_key.text }
+	rocket_chat_data = {"name": full_name, "email": email, "password": password, "username": username}
+	rocket_chat_data = json.dumps(rocket_chat_data)
 
-cursor.execute("INSERT INTO `ost_user_account` (`user_id`, `status`, `username`, `passwd`, `registered`) VALUES (%s, '1', %s, %s, %s);", (user_id, username, password_bcrypt, now))
+
+	response = requests.post(rocket_chat_url, data=rocket_chat_data, headers=rocket_chat_headers )
+
+	#
+	# osticket
+	#
+
+	mydb = MySQLdb.connect(
+	  host=osticket_server,
+	  user=osticket_user,
+	  passwd=osticket_password.text,
+	  db="osticket_db"
+	)
+
+	cursor = mydb.cursor()
 
 
-mydb.commit()
-mydb.close()
+	# gets next avalible user_id, this needs to be the same across all 3 tables
+	cursor.execute("SELECT `AUTO_INCREMENT` FROM  INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'osticket_db' AND TABLE_NAME = 'ost_user';")
+
+	rows = cursor.fetchall()
+	row = str(rows[0])
+	user_id = row[1:-2]
+
+
+	cursor.execute("INSERT INTO `ost_user_email` (`id`, `user_id`, `flags`, `address`) VALUES (%s, %s, '0', %s);", (user_id, user_id, email))
+
+	cursor.execute("INSERT INTO `ost_user` (`org_id`, `default_email_id`, `status`, `name`, `created`, `updated`) VALUES ('0', %s, '0', %s, %s, %s);", (user_id, username, now, now))
+
+	cursor.execute("INSERT INTO `ost_user_account` (`user_id`, `status`, `username`, `passwd`, `registered`) VALUES (%s, '1', %s, %s, %s);", (user_id, username, password_bcrypt, now))
+
+
+	mydb.commit()
+	mydb.close()
+
+
+if action == 'add':
+
+	first_name = input("First name: ")
+	last_name = input("Last name: ")
+	username = first_name[0] + last_name
+	full_name = first_name + ' ' +  last_name
+
+	email = input("Email: ")
+	location = input("Location: ")
+	job_title = input("Job title: ")
+
+	password = getpass.getpass("User Password: ")
+	password_bcrypt = str(bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(prefix=b"2a", rounds=8)))
+	password_bcrypt = password_bcrypt[2:-1]
+	password_argon = argon2.hash(password)
+
+	create_user(first_name, last_name, username, full_name, email, location, job_title, password, password_bcrypt, password_argon)
+
+elif action == 'bulk':
+
+	with open(sys.argv[2], mode='r') as csv_file:
+		csv_reader = csv.reader(csv_file, delimiter=',')		
+		for row in csv_reader:
+
+			first_name = row[0]
+			last_name = row[1]
+			username = first_name[0] + last_name
+			full_name = first_name + ' ' +  last_name
+
+			email = row[2]
+			location = row[3]
+			job_title = row[4]
+
+			password = row[5]
+			password_bcrypt = str(bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(prefix=b"2a", rounds=8)))
+			password_bcrypt = password_bcrypt[2:-1]
+			password_argon = argon2.hash(password)
+
+			create_user(first_name, last_name, username, full_name, email, location, job_title, password, password_bcrypt, password_argon)
+
+
