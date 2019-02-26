@@ -1,0 +1,43 @@
+#!/bin/bash
+
+secret_server='10.2.0.23'
+osticket_server='10.2.0.15'
+rocket_chat_server='10.2.0.16'
+radius_server='10.2.0.4'
+hope_matters_server='10.2.0.23'
+wiki_server='10.2.0.20'
+file_server='10.2.0.19'
+
+read -s -p "Admin Password: " admin_password
+
+token=$(echo "U2FsdGVkX1/HL2Mo0Kc9X+4vEFCSeLjh7DOM/p8ZZQ5d4adED4NX1lqZTWWxQ6qf
+pXIU2RQMK7jSt+Eukk9JBw==" | openssl enc -aes-256-cbc -a -d -salt -pass pass:${admin_password})
+
+hope_matters_password=$(curl -s -d id=2 -d token=${token} -X POST http://${secret_server}/api/get_secret.php)
+osticket_password=$(curl -s -d id=4 -d token=${token} -X POST http://${secret_server}/api/get_secret.php)
+radius_password=$(curl -s -d id=3 -d token=${token} -X POST http://${secret_server}/api/get_secret.php)
+wiki_password=$(curl -s -d id=9 -d token=${token} -X POST http://${secret_server}/api/get_secret.php)
+
+# deleting the previous backups makes the script idempotent
+rm -rf /tmp/backup
+mkdir -p /tmp/backup
+
+mysqldump -h ${hope_matters_server} -u account_creator -p${hope_matters_password} --all-databases > /tmp/backup/database_hope.sql
+mysqldump -h ${osticket_server} -u account_creator -p${osticket_password} --all-databases > /tmp/backup/database_osticket.sql
+mysqldump -h ${radius_server} -u account_creator -p${radius_password} --all-databases > /tmp/backup/database_radius.sql
+mysqldump -h ${wiki_server} -u account_creator -p${wiki_password} --all-databases > /tmp/backup/database_wiki.sql
+
+scp -r root@${hope_matters_server}:/var/www/html/uploaded_images /tmp/backup/uploaded_images
+scp -r root@${wiki_server}:/var/www/html/mediawiki/mediawiki-1.32.0/images /tmp/backup/images
+
+# mongodb backup from rocketchat
+ssh root@${rocket_chat_server} rm -rf /tmp/mongo
+ssh root@${rocket_chat_server} mkdir -p /tmp/mongo
+ssh root@${rocket_chat_server} mongodump -d parties -o /tmp/mongo
+ssh root@${rocket_chat_server} tar czf - /tmp/mongo/parties > /tmp/backup/mongo-backup.tar.gz
+
+backup_date=$(date "+%Y.%m.%d-%H.%M.%S")
+
+# pack all of it and move to network drive
+tar -cvzf /tmp/backup/backup-${backup_date}.tar.gz /tmp/backup/*
+scp /tmp/backup/backup-${backup_date}.tar.gz root@${file_server}:/share
