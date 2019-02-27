@@ -114,7 +114,7 @@ def create_user(first_name, last_name, username, full_name, email, location, job
 
 	cursor.execute("INSERT INTO `radcheck` (`username`, `attribute`, `op`, `value`) VALUES (%s, 'Cleartext-Password', ':=', %s);", (username, password))
 
-	cursor.execute("INSERT INTO `radusergroup` (`username`, `groupname`, `priority`) VALUES ('%s', 'mygroup', '0');" % username)
+	cursor.execute("INSERT INTO `radusergroup` (`username`, `groupname`, `priority`) VALUES ('%s', 'internal', '0');" % username)
 
 	cursor.execute("INSERT INTO `userinfo` (`username`, `changeuserinfo`, `enableportallogin`, `creationdate`, `creationby`, `updatedate`) VALUES (%s, '0', '0', %s, 'administrator', %s);", (username, now, now))
 
